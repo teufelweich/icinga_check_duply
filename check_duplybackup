@@ -1,0 +1,75 @@
+#!/usr/bin/env python3
+
+import argparse
+
+import sys
+
+import datetime as dt
+
+WANTED_PERFORMANCE_VALUES = ('ElapsedTime', 'SourceFileSize', 'RawDeltaSize', 'TotalDestinationSizeChange', 'Errors')
+
+
+def get_performance_data(values):
+    print(values)
+    return values
+
+
+def main():
+    parser = argparse.ArgumentParser(description="passive Nagios duply backup check with hot performance data")
+    parser.add_argument("logpath", help="path to logfile")
+    parser.add_argument("-v", "--verbose", help="increase output verbosity", action="store_true")
+    parser.add_argument("-id", "--ignore-day", help="ignores if the backup statistics aren't from the current day",
+                        action="store_true")
+
+    args = parser.parse_args()
+    print(args)
+
+    lines = []
+    try:
+        with open(args.logpath, "rt") as file:  # get the first statistics section from the log file
+            inside_stats = False
+            if args.verbose:
+                print("opened file, start reading")
+            for line in file:
+                if "[ Backup Statistics ]" in line:
+                    inside_stats = True
+                    continue
+                elif "----------------------------" in line:
+                    inside_stats = False
+                if inside_stats:
+                    lines.append(line.rstrip('\n'))
+            if args.verbose:
+                print("finished reading, found", len(lines), "lines. Closing file now.")
+    except Exception as e:
+        print("The logfile couldn't be opened, exiting... ", e)
+        sys.exit(1)
+
+    if len(lines) == 0:
+        print("no backup statistics in log file found, exiting.")
+        sys.exit(1)
+
+    values = {}
+    for line in lines:
+        value = line[2:].split(" ")
+        try:
+            values[value[0]] = int(value[1])
+        except ValueError:
+            try:
+                values[value[0]] = float(value[1])
+            except ValueError as e:
+                print(e)
+
+    if dt.date.fromtimestamp(values["StartTime"]) != dt.datetime.today().date() \
+            and not args.ignore_day:  # check if backup ran today and if it shouldn't be ignored
+        print("There isn't any backup statistic from the current day, exiting")
+        sys.exit(1)
+    elif args.verbose:
+        print("Found backup statistics from today")
+    if args.verbose:
+        print(values)
+
+    performance_data = get_performance_data(dict((k, values[k]) for k in WANTED_PERFORMANCE_VALUES if k in values))
+
+
+if __name__ == '__main__':
+    main()
